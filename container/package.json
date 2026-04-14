@@ -1,0 +1,14 @@
+{
+  "name": "claude-signal-bridge",
+  "version": "1.0.0",
+  "description": "Signal bridge — polls Signal, sends messages to Claude PTY host, serves settings UI",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "better-sqlite3": "^11.0.0",
+    "ws": "^8.18.0"
+  }
+}

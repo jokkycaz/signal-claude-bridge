@@ -1,0 +1,15 @@
+{
+  "name": "claude-pty-host",
+  "version": "1.0.0",
+  "description": "Host-side PTY wrapper — runs Claude CLI persistently and exposes HTTP API",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "node-pty": "^1.0.0",
+    "strip-ansi": "^7.1.0",
+    "express": "^4.18.2",
+    "@xterm/headless": "^5.5.0"
+  }
+}

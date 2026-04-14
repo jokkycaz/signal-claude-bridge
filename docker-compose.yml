@@ -1,0 +1,40 @@
+# Claude Signal Bridge
+#
+# Two parts:
+#   1. Docker container (this file) — Signal WebSocket, settings UI, message log
+#   2. Host process (run manually) — Claude CLI in persistent PTY
+#
+# Start order:
+#   1. cd host && npm install && node index.js  (on host machine)
+#   2. docker compose up -d                      (this file)
+
+services:
+  claude-bridge:
+    build: ./container
+    restart: unless-stopped
+    mem_limit: 256m
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3100}:${WEB_PORT:-3100}"
+    environment:
+      - SIGNAL_API_URL=${SIGNAL_API_URL:-http://signal-cli:8080}
+      - SIGNAL_SENDER=${SIGNAL_SENDER}
+      - ALLOWED_NUMBERS=${ALLOWED_NUMBERS}
+      - PTY_HOST_URL=${PTY_HOST_URL:-http://host.docker.internal:3101}
+      - BRIDGE_SECRET=${BRIDGE_SECRET:-change-me}
+      - POLL_INTERVAL_MS=${POLL_INTERVAL_MS:-2500}
+      - WEB_PORT=${WEB_PORT:-3100}
+      - GROUP_PREFIX=${GROUP_PREFIX:-chad}
+      - ATTACHMENT_HOST_DIR=${ATTACHMENT_HOST_DIR}
+    volumes:
+      - bridge-data:/app/data
+      - ${ATTACHMENT_DIR:-./attachments}:/app/attachments
+    networks:
+      - signal-network
+
+volumes:
+  bridge-data:
+
+networks:
+  signal-network:
+    external: true
+    name: ${SIGNAL_NETWORK:-pokemon-tcg-monitor_default}
