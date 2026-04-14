@@ -2,8 +2,6 @@
 
 Bridge Claude Code CLI to Signal messaging. Chat with a persistent, interactive Claude session from your phone — private DMs or group chats with a custom bot persona.
 
-**The only Signal bridge that keeps Claude's live terminal running** while extracting clean responses via a shadow xterm terminal. No headless mode, no `-p` flag, no API keys — just your Claude Max/Pro subscription and a real interactive CLI session you can also type into directly.
-
 ## How It Works
 
 ```
