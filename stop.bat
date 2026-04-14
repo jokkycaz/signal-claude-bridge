@@ -2,7 +2,7 @@
 title Claude Signal Bridge - Shutdown
 
 echo Stopping Docker bridge container...
-cd /d C:\users\jokky\documents\claude-signal-bridge
+cd /d "%~dp0"
 docker compose down
 
 echo Stopping PTY Host...

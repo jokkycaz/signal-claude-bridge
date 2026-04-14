@@ -13,7 +13,7 @@ import { renderPage } from './ui.js';
 
 const ATTACHMENT_DIR = '/app/attachments';
 // Windows path that Claude sees (host side)
-const ATTACHMENT_HOST_DIR = process.env.ATTACHMENT_HOST_DIR || 'C:\\users\\jokky\\documents\\chad-vibes\\attachments';
+const ATTACHMENT_HOST_DIR = process.env.ATTACHMENT_HOST_DIR || '';
 
 const WEB_PORT = parseInt(process.env.WEB_PORT || '3100');
 

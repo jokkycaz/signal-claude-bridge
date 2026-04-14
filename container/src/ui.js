@@ -77,7 +77,7 @@ export function renderPage(settings, log, status) {
           <div>
             <label class="block text-sm text-gray-400 mb-1">Claude Project Directory</label>
             <input type="text" name="project_dir" value="${esc(settings.project_dir)}"
-              placeholder="C:\\users\\jokky\\documents\\pokemon-tcg-monitor"
+              placeholder="C:\\path\\to\\your\\project"
               class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
             <p class="text-xs text-gray-600 mt-1">Changing this restarts the Claude session.</p>
           </div>

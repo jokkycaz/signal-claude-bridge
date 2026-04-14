@@ -35,7 +35,7 @@ export function getDb() {
       allowed_groups: process.env.ALLOWED_GROUPS || '',
       pty_host_url: process.env.PTY_HOST_URL || 'http://host.docker.internal:3101',
       poll_interval_ms: process.env.POLL_INTERVAL_MS || '2500',
-      project_dir: process.env.PROJECT_DIR || 'C:\\users\\jokky\\documents\\pokemon-tcg-monitor',
+      project_dir: process.env.PROJECT_DIR || '',
       groups_enabled: 'true',
       group_prefix: process.env.GROUP_PREFIX || 'chad',
       approval_numbers: process.env.ALLOWED_NUMBERS || '',
