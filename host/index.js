@@ -342,14 +342,29 @@ function handleMessageStream(text, onEvent) {
         }
       }
 
-      // Force extract after 15s idle (fallback if prompt detection fails)
-      if (idle >= 15000) {
-        const postSnapshot = snapshotScreen();
-        const content = extractResponseFromScreen(postSnapshot, text);
-        log(`Force extract after ${idle}ms idle`);
-        cleanup();
-        if (content) onEvent({ type: 'text', data: content });
-        onEvent({ type: 'done' });
+      // Force extract — last resort fallback if prompt detection fails.
+      // Only trigger if screen shows no signs of active tool work.
+      if (idle >= 30000) {
+        // Check if recent screen lines show tool activity (edits, diffs, running indicators).
+        // If so, Claude is still working — don't force extract yet.
+        const toolActive = lastLines.some(l =>
+          /^●?\s*(Bash|Read|Write|Edit|Update|Glob|Grep|Agent|WebSearch|WebFetch|Skill)\s*[\((:]/i.test(l)
+          || /^⎿/.test(l)
+          || /^(Running|Waiting|Reading|Writing|Searching|Editing)/.test(l)
+          || /Added \d+ line|Removed \d+ line/i.test(l)
+          || /^\d+[+-]\|/.test(l)
+        );
+
+        if (toolActive) {
+          log(`Force extract deferred — tool activity detected (idle ${idle}ms)`);
+        } else {
+          const postSnapshot = snapshotScreen();
+          const content = extractResponseFromScreen(postSnapshot, text);
+          log(`Force extract after ${idle}ms idle (no tool activity)`);
+          cleanup();
+          if (content) onEvent({ type: 'text', data: content });
+          onEvent({ type: 'done' });
+        }
       }
     } finally {
       checking = false;
