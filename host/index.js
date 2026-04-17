@@ -171,6 +171,12 @@ function extractResponseFromScreen(screenLines, inputMessage) {
       continue;
     }
 
+    // Stop capturing at the prompt — everything after is old content
+    if (/^❯\s*$/.test(t)) {
+      capturing = false;
+      break; // Done — nothing after the prompt is part of this response
+    }
+
     if (isJunkLine(t)) continue;
 
     if (capturing) {

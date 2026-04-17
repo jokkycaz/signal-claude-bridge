@@ -215,8 +215,10 @@ function cleanForSignal(text) {
     if (/^●?\s*(Bash|Read|Write|Edit|Update|Glob|Grep|Agent|WebSearch|WebFetch)\(/.test(t)) return false;
     // Remove "Running…", "Waiting…" etc tool status
     if (/^(Running|Waiting|Reading|Writing|Searching)…/.test(t)) return false;
-    // Remove raw tool output (JSON fragments, command output)
+    // Remove raw tool output (JSON fragments, command output, data lines)
     if (/^(Everything up-to-date|No output|\(No output\))$/i.test(t)) return false;
+    // Remove pipe-separated data lines (e.g. "1,082 to Zach | 1,082 to Ryan")
+    if (/\d+.*\|.*\d+/.test(t) && (t.match(/\|/g) || []).length >= 2) return false;
     // Remove git log output (commit hashes)
     if (/^[0-9a-f]{7,}\s+/i.test(t)) return false;
     // Remove error exit codes
@@ -475,6 +477,7 @@ async function handleMessage(envelope) {
     }
   }
 
+  console.log(`[Bridge] Debug: body="${body}", images=${imageFiles.length}, groupId=${groupId ? 'yes' : 'no'}`);
   if (!body?.trim() && imageFiles.length === 0) return;
   if (body.length > MAX_MESSAGE_LENGTH) {
     console.log(`[Bridge] Message too long from ${source} (${body.length} chars)`);
@@ -513,7 +516,7 @@ async function handleMessage(envelope) {
   if (groupId) {
     if (!prefixRegex.test(body.trim())) return;
     messageBody = body.trim().replace(prefixStripRegex, '').trim();
-    if (!messageBody) return;
+    if (!messageBody && imageFiles.length === 0) return;
   }
 
   // If awaiting permission, hold non-approval messages
@@ -551,11 +554,22 @@ async function handleMessage(envelope) {
   }
 
   const replyTo = groupId ? `group.${groupId}` : source;
-  // Prepend sender ID and image references so Claude knows who's talking and what they sent
-  let taggedBody = `[${source}] ${messageBody}`;
+  // Build Eastern Time timestamp (e.g. "2026-04-16 3:30 PM EDT")
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD
+  const timeStr = now.toLocaleTimeString('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZoneName: 'short'
+  });
+  const timestamp = `${dateStr} ${timeStr}`;
+  // Prepend sender ID, timestamp, and image references so Claude knows who's talking, when, and what they sent
+  let taggedBody = `[${source}] [${timestamp}] ${messageBody}`;
   if (imageFiles.length > 0) {
     const imgRefs = imageFiles.map(f => `(sent image: ${f.hostPath})`).join(' ');
-    taggedBody = `[${source}] ${imgRefs}${messageBody ? ' ' + messageBody : ' what is this image?'}`;
+    taggedBody = `[${source}] [${timestamp}] ${imgRefs}${messageBody ? ' ' + messageBody : ' what is this image?'}`;
   }
 
   console.log(`[Bridge] ${source}${groupId ? ' (group)' : ''}: ${messageBody.substring(0, 80)}`);
