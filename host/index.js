@@ -188,7 +188,36 @@ function extractResponseFromScreen(screenLines, inputMessage) {
   while (responseLines.length > 0 && !responseLines[0]) responseLines.shift();
   while (responseLines.length > 0 && !responseLines[responseLines.length - 1]) responseLines.pop();
 
-  return responseLines.join('\n').trim();
+  const result = responseLines.join('\n').trim();
+
+  // Debug: dump screen buffer when extraction fails (0 chars) despite content on screen
+  if (!result) {
+    const debugFile = join(__dirname, 'extraction-debug.log');
+    const inputSnippet = inputMessage ? inputMessage.trim().substring(0, 30) : '(none)';
+    const totalNonEmpty = screenLines.filter(l => l.trim()).length;
+    let dump = `\n=== EXTRACTION FAILED @ ${new Date().toLocaleString()} ===\n`;
+    dump += `inputSnippet: "${inputSnippet}"\n`;
+    dump += `inputLineIdx: ${inputLineIdx}\n`;
+    dump += `startIdx: ${startIdx}\n`;
+    dump += `screenLines.length: ${screenLines.length}\n`;
+    dump += `non-empty lines: ${totalNonEmpty}\n`;
+    dump += `--- SCREEN LINES (startIdx-10 to end, showing line index) ---\n`;
+    const dumpStart = Math.max(0, startIdx - 10);
+    for (let i = dumpStart; i < screenLines.length; i++) {
+      const line = screenLines[i];
+      if (line.trim() || i >= startIdx) {
+        const marker = i === inputLineIdx ? ' <<<INPUT' : i === startIdx ? ' <<<START' : '';
+        // Show char codes for first 5 chars to catch invisible/unexpected characters
+        const codes = [...line.trim().substring(0, 5)].map(c => c.charCodeAt(0).toString(16)).join(',');
+        dump += `  [${i}] (${codes}) ${line.substring(0, 200)}${marker}\n`;
+      }
+    }
+    dump += `=== END ===\n`;
+    fs.appendFileSync(debugFile, dump);
+    log(`Extraction returned 0 chars — debug dumped to extraction-debug.log`);
+  }
+
+  return result;
 }
 
 function extractPermissionFromScreen(screenLines) {
