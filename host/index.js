@@ -138,8 +138,10 @@ function extractResponseFromScreen(screenLines, inputMessage) {
     }
   }
 
-  // Start scanning from after the input line (or from top if not found)
-  const startIdx = inputLineIdx >= 0 ? inputLineIdx + 1 : 0;
+  // Start scanning from after the input line.
+  // If no input found (permission reply / type-stream), scan last ~40 lines only
+  // to avoid dumping thousands of chars of old scrollback.
+  const startIdx = inputLineIdx >= 0 ? inputLineIdx + 1 : Math.max(0, screenLines.length - 40);
   const responseLines = [];
   let capturing = false;
   let lastWhiteDotIdx = -1;
@@ -172,9 +174,22 @@ function extractResponseFromScreen(screenLines, inputMessage) {
     }
 
     // Stop capturing at the prompt — everything after is old content
+    // But only if this ❯ is the real prompt, not the status bar shown mid-work.
+    // The status bar ❯ is always followed by ──── and "esc to interrupt".
     if (/^❯\s*$/.test(t)) {
-      capturing = false;
-      break; // Done — nothing after the prompt is part of this response
+      const nextLine = (screenLines[i + 1] || '').trim();
+      const lineAfter = (screenLines[i + 2] || '').trim();
+      // Check the next few lines for "esc to interrupt" — the only reliable
+      // difference between status bar ❯ (mid-work) and real prompt ❯ (done).
+      const nearby = [screenLines[i+1], screenLines[i+2], screenLines[i+3], screenLines[i+4]]
+        .map(l => (l || '').trim()).join(' ');
+      const isStatusBar = /esc\s+to\s+interrupt/i.test(nearby);
+      if (!isStatusBar) {
+        capturing = false;
+        break; // Done — nothing after the prompt is part of this response
+      }
+      // Status bar ❯ — skip it and keep scanning
+      continue;
     }
 
     if (isJunkLine(t)) continue;
@@ -295,14 +310,15 @@ function isJunkLine(t) {
 
 // --- Streaming message handler ---
 
-function handleMessageStream(text, onEvent) {
+function handleMessageStream(text, onEvent, opts = {}) {
   busy = true;
   lastOutputTime = Date.now();
   const startTime = Date.now();
   let resolved = false;
   let checking = false;
+  const permissionGrace = opts.isPermissionReply ? 10000 : 3000;
 
-  log(`Message stream started`);
+  log(`Message stream started${opts.isPermissionReply ? ' (permission reply)' : ''}`);
 
   const cleanup = () => {
     clearInterval(checkTimer);
@@ -345,8 +361,8 @@ function handleMessageStream(text, onEvent) {
       }
       const lastLinesText = lastLines.join('\n');
 
-      // Permission prompt (not in first 3s)
-      if (elapsed > 3000 && isPermissionPrompt(lastLinesText)) {
+      // Permission prompt — skip early to avoid re-detecting the prompt we just answered
+      if (elapsed > permissionGrace && isPermissionPrompt(lastLinesText)) {
         const postSnapshot = snapshotScreen();
         const content = extractResponseFromScreen(postSnapshot, text);
         if (content) onEvent({ type: 'text', data: content });
@@ -358,7 +374,9 @@ function handleMessageStream(text, onEvent) {
       }
 
       // Claude prompt (not in first 5s)
-      if (elapsed > 5000) {
+      // Skip if "esc to interrupt" is visible — that means Claude is still working
+      // and the ❯ is the status bar, not the real input prompt.
+      if (elapsed > 5000 && !/esc\s+to\s+interrupt/i.test(lastLinesText)) {
         const hasPrompt = lastLines.some(l => /^❯\s*$/.test(l) || /^>\s*$/.test(l));
         if (hasPrompt) {
           const postSnapshot = snapshotScreen();
@@ -458,7 +476,7 @@ app.post('/type', requireAuth, (req, res) => {
         log(`Type-stream event: ${event.type} ${(event.data || '').substring(0, 60)}`);
         res.write(`data: ${JSON.stringify(event)}\n\n`);
         if (event.type === 'done') res.end();
-      });
+      }, { isPermissionReply: true });
     }, 500);
   } else {
     busy = true;
