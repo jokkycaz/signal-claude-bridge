@@ -26,14 +26,11 @@ services:
       - GROUP_PREFIX=${GROUP_PREFIX:-chad}
       - ATTACHMENT_HOST_DIR=${ATTACHMENT_HOST_DIR}
     volumes:
-      - bridge-data:/app/data
+      - ./data:/app/data
       - ${ATTACHMENT_DIR:-./attachments}:/app/attachments
       - ./logs:/app/logs
     networks:
       - signal-network
-
-volumes:
-  bridge-data:
 
 networks:
   signal-network:

@@ -5,3 +5,5 @@ data/
 .env
 host/bridge.log
 host/launcher.js
+logs/
+data/
