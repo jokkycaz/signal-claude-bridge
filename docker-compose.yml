@@ -28,6 +28,7 @@ services:
     volumes:
       - bridge-data:/app/data
       - ${ATTACHMENT_DIR:-./attachments}:/app/attachments
+      - ./logs:/app/logs
     networks:
       - signal-network
 

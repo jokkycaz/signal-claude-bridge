@@ -281,19 +281,22 @@ function cleanForSignal(text) {
     return true;
   }).join('\n');
 
-  // Log filtered lines if any non-trivial content was dropped
+  // Log filtered lines to persistent file
   if (filtered.length > 0) {
-    const interesting = filtered.filter(f =>
-      !['box-drawing', 'spinner', 'tool-result', 'tool-call', 'tool-status',
-        'prompt', 'shortcut-hint', 'expand-hint', 'nav-hint', 'spinner-timing',
-        'cc-version', 'cc-promo', 'cc-notice', 'cc-link', 'model-line',
-        'background-hint', 'timeout-hint', 'ascii-art', 'x-line'].includes(f.reason)
-    );
+    const trivial = new Set(['box-drawing', 'spinner', 'tool-result', 'tool-call', 'tool-status',
+      'prompt', 'shortcut-hint', 'expand-hint', 'nav-hint', 'spinner-timing',
+      'cc-version', 'cc-promo', 'cc-notice', 'cc-link', 'model-line',
+      'background-hint', 'timeout-hint', 'ascii-art', 'x-line']);
+    const interesting = filtered.filter(f => !trivial.has(f.reason));
     if (interesting.length > 0) {
-      console.log(`[Filter] Dropped ${filtered.length} lines (${interesting.length} notable):`);
-      for (const f of interesting) {
-        console.log(`[Filter]   [${f.reason}] ${f.line}`);
-      }
+      try {
+        let entry = `[${new Date().toLocaleString()}] Dropped ${filtered.length} lines (${interesting.length} notable):\n`;
+        for (const f of interesting) {
+          entry += `  [${f.reason}] ${f.line}\n`;
+        }
+        fs.appendFileSync('/app/logs/filter-debug.log', entry + '\n');
+      } catch {}
+      console.log(`[Filter] Dropped ${filtered.length} lines (${interesting.length} notable)`);
     }
   }
 
