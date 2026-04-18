@@ -190,12 +190,12 @@ function extractResponseFromScreen(screenLines, inputMessage) {
 
   const result = responseLines.join('\n').trim();
 
-  // Debug: dump screen buffer when extraction fails (0 chars) despite content on screen
-  if (!result) {
+  // Debug: dump screen buffer on every extraction so we can diagnose truncation
+  {
     const debugFile = join(__dirname, 'extraction-debug.log');
     const inputSnippet = inputMessage ? inputMessage.trim().substring(0, 30) : '(none)';
     const totalNonEmpty = screenLines.filter(l => l.trim()).length;
-    let dump = `\n=== EXTRACTION FAILED @ ${new Date().toLocaleString()} ===\n`;
+    let dump = `\n=== EXTRACTION (${result.length} chars) @ ${new Date().toLocaleString()} ===\n`;
     dump += `inputSnippet: "${inputSnippet}"\n`;
     dump += `inputLineIdx: ${inputLineIdx}\n`;
     dump += `startIdx: ${startIdx}\n`;
@@ -214,7 +214,7 @@ function extractResponseFromScreen(screenLines, inputMessage) {
     }
     dump += `=== END ===\n`;
     fs.appendFileSync(debugFile, dump);
-    log(`Extraction returned 0 chars — debug dumped to extraction-debug.log`);
+    log(`Extraction: ${result.length} chars — debug dumped to extraction-debug.log`);
   }
 
   return result;

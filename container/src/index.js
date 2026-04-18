@@ -187,96 +187,117 @@ async function downloadAttachment(attachmentId, contentType) {
 // --- Response cleanup for Signal ---
 
 function cleanForSignal(text) {
-  return text.split('\n').filter(line => {
+  // Named filter rules — each returns a reason string if matched, or null
+  const filters = [
+    // Spinner lines
+    t => /^[✶✻✽✢·*●✦○◌◍◉⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s*\S+…\s*$/.test(t) && 'spinner',
+    // Box drawing
+    t => /^[─╭╮╰╯│┌┐└┘┤├┬┴┼═]+$/.test(t) && 'box-drawing',
+    t => /^[╭╮╰╯]─/.test(t) && 'box-drawing',
+    t => /─{5,}/.test(t) && 'box-drawing',
+    t => /╌{5,}/.test(t) && 'box-drawing',
+    // Claude Code UI
+    t => /Claude Code v\d/i.test(t) && 'cc-version',
+    t => /Share Claude Code/i.test(t) && 'cc-promo',
+    t => (/\/passes/i.test(t) && t.length < 30) && 'cc-passes',
+    t => /earn.*\$\d+/i.test(t) && 'cc-earn-promo',
+    // ASCII art
+    t => /^[▝▜█▛▘▐▌\s\[\]✻·]+$/.test(t) && 'ascii-art',
+    t => /~\\Documents\\/i.test(t) && 'path-leak',
+    // UI phrases
+    t => (/^not use\b/i.test(t) && t.length < 40) && 'ui-phrase',
+    t => /^"[^"]{1,30}"[)\s]*$/.test(t) && 'quoted-phrase',
+    // Tool output
+    t => /^⎿/.test(t) && 'tool-result',
+    t => /^●?\s*(Bash|Read|Write|Edit|Update|Glob|Grep|Agent|WebSearch|WebFetch)\(/.test(t) && 'tool-call',
+    t => /^(Running|Waiting|Reading|Writing|Searching)…/.test(t) && 'tool-status',
+    t => /^(Everything up-to-date|No output|\(No output\))$/i.test(t) && 'tool-empty',
+    // Pipe-separated data
+    t => (/\d+.*\|.*\d+/.test(t) && (t.match(/\|/g) || []).length >= 2) && 'pipe-data',
+    // Git output
+    t => /^[0-9a-f]{7,}\s+/i.test(t) && 'git-hash',
+    t => /^Error: Exit code \d+/i.test(t) && 'exit-code',
+    // Diff/edit lines
+    t => /^\d+\s*[-+]/.test(t) && 'diff-line',
+    t => (/^\d+\s*$/.test(t) && t.length < 5) && 'line-number',
+    t => /^\d+\s+##/.test(t) && 'diff-header',
+    t => /^\d+\s+[<‹]/.test(t) && 'diff-bracket',
+    t => /^\d+\s+\|/.test(t) && 'diff-pipe',
+    // HTML/markdown
+    t => /^[<‹]!--/.test(t) && 'html-comment',
+    t => /<!--.*-->/.test(t) && 'html-comment',
+    t => (/^#+\s/.test(t) && t.length < 60) && 'md-header',
+    t => /^\|.*\|/.test(t) && 'md-table',
+    t => (/format:/i.test(t) && t.length < 80) && 'format-line',
+    // File notifications
+    t => /^(Updated|Created|Wrote|Saved|Edit file|Create file)\s/i.test(t) && 'file-notification',
+    t => (/\.(md|json|txt|js|ts)\s*$/.test(t) && t.length < 40) && 'file-extension',
+    // Section markers
+    t => /^(Balances|Cooldowns|Inventories|Achievements|Quests|Pets|Farms|Fish)\s*$/i.test(t) && 'section-marker',
+    // JSON
+    t => /^\s*"(args|headers|origin|url|Host|Accept|User-Agent|Content-Type)"/.test(t) && 'json-fragment',
+    t => /^\s*[\{\}\[\]]$/.test(t) && 'json-bracket',
+    // Spinner with timing
+    t => /^[✶✻✽✢·*●✦○◌◍◉⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s*.+\s+for\s+\d+/i.test(t) && 'spinner-timing',
+    // Expand/shortcut hints
+    t => /ctrl\+o to expand/i.test(t) && 'expand-hint',
+    t => /lines \(ctrl\+/i.test(t) && 'expand-hint',
+    t => /esc\s*to\s*interrupt/i.test(t) && 'shortcut-hint',
+    t => /for\s*shortcuts/i.test(t) && 'shortcut-hint',
+    t => /ctrl\+[a-z]\s+to\s+/i.test(t) && 'shortcut-hint',
+    t => /Enter to select.*navigate.*cancel/i.test(t) && 'shortcut-hint',
+    // Claude Code notices
+    t => /Claude Code has switched/i.test(t) && 'cc-notice',
+    t => /claude install/i.test(t) && 'cc-notice',
+    t => /clau\.de\//i.test(t) && 'cc-link',
+    t => /Opus.*context|Sonnet.*context/i.test(t) && 'model-line',
+    // Sender ID leak
+    t => /^\[[\+0-9a-f-]{10,}\]/i.test(t) && 'sender-id-leak',
+    // Prompt markers
+    t => /^❯/.test(t) && 'prompt',
+    t => /^>\s*$/.test(t) && 'prompt',
+    t => /^X+$/.test(t) && 'x-line',
+    // Navigation
+    t => /↑\/↓\s*to\s*navigate/i.test(t) && 'nav-hint',
+    t => /^☐\s/.test(t) && 'checkbox',
+    // Timeout
+    t => /timeout\s+\d+[ms]/i.test(t) && 'timeout-hint',
+    t => /ctrl\+b to run in background/i.test(t) && 'background-hint',
+  ];
+
+  const filtered = [];
+
+  const result = text.split('\n').filter(line => {
     const t = line.trim();
-    if (!t) return true; // keep blank lines for paragraph breaks
-    // Remove spinner lines (symbol + word ending in …)
-    if (/^[✶✻✽✢·*●✦○◌◍◉⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s*\S+…\s*$/.test(t)) return false;
-    // Remove box drawing (including lines that START with box chars even if they have text after)
-    if (/^[─╭╮╰╯│┌┐└┘┤├┬┴┼═]+$/.test(t)) return false;
-    if (/^[╭╮╰╯]─/.test(t)) return false;
-    if (/─{5,}/.test(t)) return false;
-    if (/╌{5,}/.test(t)) return false;
-    // Remove Claude Code version header and promo
-    if (/Claude Code v\d/i.test(t)) return false;
-    if (/Share Claude Code/i.test(t)) return false;
-    if (/\/passes/i.test(t) && t.length < 30) return false;
-    if (/earn.*\$\d+/i.test(t)) return false;
-    // Remove ASCII art (block chars)
-    if (/^[▝▜█▛▘▐▌\s\[\]✻·]+$/.test(t)) return false;
-    if (/~\\Documents\\/i.test(t)) return false;
-    // Remove quotes around short UI phrases (like "chat and vibes")
-    if (/^not use\b/i.test(t) && t.length < 40) return false;
-    // Remove any line that's just a quoted short phrase
-    if (/^"[^"]{1,30}"[)\s]*$/.test(t)) return false;
-    // Remove tool output (⎿ prefix)
-    if (/^⎿/.test(t)) return false;
-    // Remove tool call lines (Bash(...), Read(...), Update(...), etc.)
-    if (/^●?\s*(Bash|Read|Write|Edit|Update|Glob|Grep|Agent|WebSearch|WebFetch)\(/.test(t)) return false;
-    // Remove "Running…", "Waiting…" etc tool status
-    if (/^(Running|Waiting|Reading|Writing|Searching)…/.test(t)) return false;
-    // Remove raw tool output (JSON fragments, command output, data lines)
-    if (/^(Everything up-to-date|No output|\(No output\))$/i.test(t)) return false;
-    // Remove pipe-separated data lines (e.g. "1,082 to Zach | 1,082 to Ryan")
-    if (/\d+.*\|.*\d+/.test(t) && (t.match(/\|/g) || []).length >= 2) return false;
-    // Remove git log output (commit hashes)
-    if (/^[0-9a-f]{7,}\s+/i.test(t)) return false;
-    // Remove error exit codes
-    if (/^Error: Exit code \d+/i.test(t)) return false;
-    // Remove diff/edit output lines
-    if (/^\d+\s*[-+]/.test(t)) return false;
-    if (/^\d+\s*$/.test(t) && t.length < 5) return false;
-    if (/^\d+\s+##/.test(t)) return false;
-    if (/^\d+\s+[<‹]/.test(t)) return false;
-    if (/^\d+\s+\|/.test(t)) return false;
-    // Remove HTML comments (various bracket styles)
-    if (/^[<‹]!--/.test(t)) return false;
-    if (/<!--.*-->/.test(t)) return false;
-    // Remove markdown headers from file edits
-    if (/^#+\s/.test(t) && t.length < 60) return false;
-    // Remove markdown table format lines
-    if (/^\|.*\|/.test(t)) return false;
-    // Remove any line that looks like file content being edited (format: ...)
-    if (/format:/i.test(t) && t.length < 80) return false;
-    // Remove file update notifications
-    if (/^(Updated|Created|Wrote|Saved|Edit file|Create file)\s/i.test(t)) return false;
-    if (/\.(md|json|txt|js|ts)\s*$/.test(t) && t.length < 40) return false;
-    // Remove raw file section markers
-    if (/^(Balances|Cooldowns|Inventories|Achievements|Quests|Pets|Farms|Fish)\s*$/i.test(t)) return false;
-    // Remove JSON fragments
-    if (/^\s*"(args|headers|origin|url|Host|Accept|User-Agent|Content-Type)"/.test(t)) return false;
-    if (/^\s*[\{\}\[\]]$/.test(t)) return false;
-    // Remove spinner with timing (e.g. "✻ Baked for 35s")
-    if (/^[✶✻✽✢·*●✦○◌◍◉⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s*.+\s+for\s+\d+/i.test(t)) return false;
-    // Remove expand hints
-    if (/ctrl\+o to expand/i.test(t)) return false;
-    if (/lines \(ctrl\+/i.test(t)) return false;
-    // Remove status bar / shortcut hints
-    if (/esc\s*to\s*interrupt/i.test(t)) return false;
-    if (/for\s*shortcuts/i.test(t)) return false;
-    if (/ctrl\+[a-z]\s+to\s+/i.test(t)) return false;
-    if (/Enter to select.*navigate.*cancel/i.test(t)) return false;
-    // Remove Claude Code notices
-    if (/Claude Code has switched/i.test(t)) return false;
-    if (/claude install/i.test(t)) return false;
-    if (/clau\.de\//i.test(t)) return false;
-    // Remove model/context lines
-    if (/Opus.*context|Sonnet.*context/i.test(t)) return false;
-    // Remove sender ID prefixes that leaked through
-    if (/^\[[\+0-9a-f-]{10,}\]/i.test(t)) return false;
-    // Remove prompt markers
-    if (/^❯/.test(t)) return false;
-    if (/^>\s*$/.test(t)) return false;
-    if (/^X+$/.test(t)) return false;
-    // Remove navigation hints
-    if (/↑\/↓\s*to\s*navigate/i.test(t)) return false;
-    // Remove checkbox UI markers
-    if (/^☐\s/.test(t)) return false;
-    // Remove timeout/background hints
-    if (/timeout\s+\d+[ms]/i.test(t)) return false;
-    if (/ctrl\+b to run in background/i.test(t)) return false;
+    if (!t) return true;
+
+    for (const filter of filters) {
+      const reason = filter(t);
+      if (reason) {
+        filtered.push({ reason, line: t.substring(0, 120) });
+        return false;
+      }
+    }
     return true;
-  }).join('\n')
+  }).join('\n');
+
+  // Log filtered lines if any non-trivial content was dropped
+  if (filtered.length > 0) {
+    const interesting = filtered.filter(f =>
+      !['box-drawing', 'spinner', 'tool-result', 'tool-call', 'tool-status',
+        'prompt', 'shortcut-hint', 'expand-hint', 'nav-hint', 'spinner-timing',
+        'cc-version', 'cc-promo', 'cc-notice', 'cc-link', 'model-line',
+        'background-hint', 'timeout-hint', 'ascii-art', 'x-line'].includes(f.reason)
+    );
+    if (interesting.length > 0) {
+      console.log(`[Filter] Dropped ${filtered.length} lines (${interesting.length} notable):`);
+      for (const f of interesting) {
+        console.log(`[Filter]   [${f.reason}] ${f.line}`);
+      }
+    }
+  }
+
+  return result
   // Clean up inline junk
   .replace(/\[\+?\d{10,}\]/g, '')  // strip phone numbers in brackets
   .replace(/\[[0-9a-f-]{20,}\]/gi, '')  // strip UUIDs in brackets
