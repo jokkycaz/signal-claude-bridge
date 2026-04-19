@@ -41,11 +41,13 @@ let ready = false;
 let busy = false;
 let startupComplete = false;
 let lastOutputTime = 0;
+let lastExtractionEnd = 0;
+let lastPermissionScreenPos = 0;
 
 // --- Shadow terminal for text extraction ---
 // Persistent xterm instance that receives ALL PTY bytes.
 // Tracks the full screen state so we can snapshot and diff.
-const shadowTerm = new Terminal({ cols: COLS, rows: ROWS, scrollback: 5000, allowProposedApi: true });
+const shadowTerm = new Terminal({ cols: COLS, rows: ROWS, scrollback: 10000, allowProposedApi: true });
 
 function snapshotScreen() {
   const lines = [];
@@ -139,9 +141,14 @@ function extractResponseFromScreen(screenLines, inputMessage) {
   }
 
   // Start scanning from after the input line.
-  // If no input found (permission reply / type-stream), scan last ~40 lines only
-  // to avoid dumping thousands of chars of old scrollback.
-  const startIdx = inputLineIdx >= 0 ? inputLineIdx + 1 : Math.max(0, screenLines.length - 40);
+  // If no input found (permission reply / type-stream), resume from where the
+  // last extraction ended so we don't re-send already-sent content.
+  // Falls back to last ~40 lines if no prior extraction or buffer overflowed.
+  const startIdx = inputLineIdx >= 0
+    ? inputLineIdx + 1
+    : (lastExtractionEnd > 0 && lastExtractionEnd < screenLines.length)
+      ? lastExtractionEnd
+      : Math.max(0, screenLines.length - 40);
   const responseLines = [];
   let capturing = false;
   let lastWhiteDotIdx = -1;
@@ -232,36 +239,45 @@ function extractResponseFromScreen(screenLines, inputMessage) {
     log(`Extraction: ${result.length} chars — debug dumped to extraction-debug.log`);
   }
 
+  lastExtractionEnd = screenLines.length;
   return result;
 }
 
 function extractPermissionFromScreen(screenLines) {
-  const permLines = [];
-  let foundQuestion = false;
+  // Scan from the BOTTOM to find the last permission question on screen.
+  // This avoids picking up old response text from scrollback above.
+  let questionIdx = -1;
+  for (let i = screenLines.length - 1; i >= 0; i--) {
+    const t = screenLines[i].trim();
+    if (/Do you want to /i.test(t) || /Allow\s+\w/i.test(t)) {
+      questionIdx = i;
+      break;
+    }
+  }
 
-  for (const line of screenLines) {
-    const t = line.trim();
+  if (questionIdx < 0) return 'Claude is asking for permission. Check the terminal.';
+
+  const permLines = [];
+  for (let i = questionIdx; i < screenLines.length; i++) {
+    const t = screenLines[i].trim();
     if (!t) continue;
 
     if (/Do you want to /i.test(t) || /Allow\s+\w/i.test(t)) {
-      foundQuestion = true;
       permLines.push(t);
       continue;
     }
 
-    if (foundQuestion) {
-      const optMatch = t.match(/^(?:❯\s*)?(\d+)\.\s+(.+)/);
-      if (optMatch) {
-        permLines.push(`${optMatch[1]}. ${optMatch[2]}`);
-        continue;
-      }
-      if (/^(?:❯\s*)?(Yes|No)/i.test(t)) {
-        permLines.push(t.replace(/^❯\s*/, ''));
-        continue;
-      }
-      if (/^Esc to cancel/i.test(t)) break;
-      if (/Tab to amend/i.test(t)) break;
+    const optMatch = t.match(/^(?:❯\s*)?(\d+)\.\s+(.+)/);
+    if (optMatch) {
+      permLines.push(`${optMatch[1]}. ${optMatch[2]}`);
+      continue;
     }
+    if (/^(?:❯\s*)?(Yes|No)/i.test(t)) {
+      permLines.push(t.replace(/^❯\s*/, ''));
+      continue;
+    }
+    if (/^Esc to cancel/i.test(t)) break;
+    if (/Tab to amend/i.test(t)) break;
   }
 
   return permLines.join('\n') || 'Claude is asking for permission. Check the terminal.';
@@ -329,13 +345,13 @@ function handleMessageStream(text, onEvent, opts = {}) {
 
   const timeout = setTimeout(() => {
     if (resolved) return;
-    log('Response timed out after 5 minutes');
+    log('Response timed out after 10 minutes');
     const postSnapshot = snapshotScreen();
     const content = extractResponseFromScreen(postSnapshot, text);
     if (content) onEvent({ type: 'text', data: content });
     cleanup();
     onEvent({ type: 'done' });
-  }, 300_000);
+  }, 600_000);
 
   const checkTimer = setInterval(() => {
     if (resolved || checking) return;
@@ -364,6 +380,9 @@ function handleMessageStream(text, onEvent, opts = {}) {
       // Permission prompt — skip early to avoid re-detecting the prompt we just answered
       if (elapsed > permissionGrace && isPermissionPrompt(lastLinesText)) {
         const postSnapshot = snapshotScreen();
+        // Save screen position BEFORE extraction so the permission-reply
+        // extraction starts here, not past the response that will appear.
+        lastPermissionScreenPos = lastExtractionEnd;
         const content = extractResponseFromScreen(postSnapshot, text);
         if (content) onEvent({ type: 'text', data: content });
         const perm = extractPermissionFromScreen(postSnapshot);
@@ -466,6 +485,13 @@ app.post('/type', requireAuth, (req, res) => {
   }
 
   if (stream) {
+    // Reset extraction position to where it was before the permission prompt
+    // was detected, so the post-permission response isn't skipped over.
+    if (lastPermissionScreenPos > 0) {
+      log(`Resetting lastExtractionEnd from ${lastExtractionEnd} to ${lastPermissionScreenPos} for permission reply`);
+      lastExtractionEnd = lastPermissionScreenPos;
+      lastPermissionScreenPos = 0;
+    }
     setTimeout(() => {
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',

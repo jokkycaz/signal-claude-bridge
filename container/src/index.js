@@ -218,7 +218,7 @@ function cleanForSignal(text) {
     t => /^●?\s*(Bash|Read|Write|Edit|Update|Glob|Grep|Agent|WebSearch|WebFetch)\(/.test(t) && 'tool-call',
     t => /^(Running|Waiting|Reading|Writing|Searching)…/.test(t) && 'tool-status',
     t => /^(Everything up-to-date|No output|\(No output\))$/i.test(t) && 'tool-empty',
-    t => (/\d+.*\|.*\d+/.test(t) && (t.match(/\|/g) || []).length >= 2) && 'pipe-data',
+    t => (/\d+.*\|.*\d+/.test(t) && (t.match(/\|/g) || []).length >= 2 && !/^[\s\-●✓•🌟⭐🔥💀]/.test(t) && !/"[^"]*"/.test(t)) && 'pipe-data',
     t => /^[0-9a-f]{7,}\s+/i.test(t) && 'git-hash',
     t => /^Error: Exit code \d+/i.test(t) && 'exit-code',
     t => /^\d+\s*[-+]/.test(t) && 'diff-line',
@@ -371,7 +371,7 @@ async function sendToClaudeStreaming(state, text, replyTo) {
       method: 'POST',
       headers: hostHeaders,
       body: JSON.stringify({ text, stream: true }),
-      signal: AbortSignal.timeout(330_000),
+      signal: AbortSignal.timeout(660_000),
     });
 
     if (res.headers.get('content-type')?.includes('text/event-stream')) {
@@ -385,7 +385,7 @@ async function sendToClaudeStreaming(state, text, replyTo) {
     method: 'POST',
     headers: hostHeaders,
     body: JSON.stringify({ text }),
-    signal: AbortSignal.timeout(330_000),
+    signal: AbortSignal.timeout(660_000),
   });
 
   if (!res.ok) {

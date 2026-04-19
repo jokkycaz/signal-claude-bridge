@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Write",
+      "Bash(npm *)",
+      "Bash(node *)",
+      "Bash(git *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(tree *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(touch *)",
+      "Bash(which *)",
+      "Bash(echo *)",
+      "Bash(curl *)",
+      "Bash(netstat *)",
+      "Bash(tasklist *)",
+      "Bash(docker *)",
+      "Bash(docker-compose *)",
+      "Bash(docker compose *)",
+      "Bash(MSYS_NO_PATHCONV=1 *)",
+      "Bash(export *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(wc *)",
+      "Bash(diff *)",
+      "Bash(sort *)",
+      "Bash(cd *)",
+      "Bash(pwd)",
+      "Bash(sleep *)",
+      "Bash(gh *)",
+      "Bash(powershell.exe *)",
+      "WebSearch",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:docs.claude.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:deepwiki.com)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)"
+    ]
+  }
+}
